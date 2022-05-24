@@ -20,10 +20,10 @@ type json_value =
     | Json_array of json_value list;;
 
 let return (v: 'a): 'a parser =
-    fun inp -> Option.some (v, inp);;
+    fun inp -> Some(v, inp);;
 
 let zero: 'a parser =
-    fun _inp -> Option.none;;
+    fun _inp -> None;;
 
 let (>>=) (p: 'a parser) (f: 'a -> 'b parser): 'b parser =
     fun inp ->
@@ -51,9 +51,8 @@ let (<|>) (p1: 'a parser) (p2: 'b parser) =
 let item: char parser =
     fun inp ->
         match (inp |> string_to_chars) with
-        | [] -> Option.none
-        | x :: xs ->
-                let rest = xs |> chars_to_string in Option.some (x, rest);;
+        | [] -> None
+        | x :: xs -> let rest = xs |> chars_to_string in Some(x, rest);;
 
 let sat (p: char -> bool): char parser =
     item >>= fun x ->
@@ -61,6 +60,25 @@ let sat (p: char -> bool): char parser =
 
 let char_parser (c: char): char parser =
     sat (fun x -> x = c);;
+
+let is_digit = fun x -> x >= '0' && x <= '9';;
+
+let parse_while (p: char -> bool): string parser =
+    fun inp ->
+        let rec apply_pred p acc = function
+            | [] -> Some (acc |> List.rev |> chars_to_string , "")
+            | x :: xs -> let parsed = acc |> List.rev |> chars_to_string  in
+                         let rest = (x :: xs) |> chars_to_string in
+                         if p x then apply_pred p (x :: acc) xs else Some(parsed, rest)
+        in apply_pred p [] (inp |> string_to_chars);;
+
+let number_parser: string parser =
+    (parse_while is_digit) >>= fun x ->
+        if x = "" then zero else return x;;
+
+let rec json_number: json_value parser =
+    let f = fun x -> Json_number(x) in
+    f <$> (int_of_string <$> number_parser);;
 
 let rec char_list_parser (s: string): char list parser =
     match (s |> string_to_chars) with
@@ -72,10 +90,10 @@ let rec char_list_parser (s: string): char list parser =
 let string_parser (s: string): string parser =
     chars_to_string <$> (char_list_parser s);;
 
-let null_parser: json_value parser =
+let json_null: json_value parser =
     (fun _ -> Json_null) <$> string_parser "null";;
 
-let bool_parser: json_value parser =
+let json_bool: json_value parser =
     let f = function
         | "true" -> Json_bool(true)
         | "false" -> Json_bool(false)
@@ -83,7 +101,8 @@ let bool_parser: json_value parser =
     in
     f <$> (string_parser "true" <|> string_parser "false");;
 
-let json_parser: json_value parser = null_parser <|> bool_parser;;
+let json_parser: json_value parser =
+    json_null <|> json_bool <|> json_number;;
 
 let print_json (v: (json_value * string) option): unit =
     match v with
@@ -91,10 +110,17 @@ let print_json (v: (json_value * string) option): unit =
     | Some(v) -> match v with
         | (Json_null, str) -> Printf.printf "(%s, [\"%s\"])\n" "Json_null" str
         | (Json_bool(b), str) -> Printf.printf "(Json_bool(%s), [\"%s\"])\n" (b |> Bool.to_string) str
+        | (Json_number(n), str) -> Printf.printf "(Json_number(%s), [\"%s\"])\n" (n |> Int.to_string) str
         | _ -> failwith "not implemented yet";;
 
 let () =
+    json_parser "123abc" |> print_json;;
+
+let () =
     json_parser "true" |> print_json;;
+
+let () =
+    json_parser "false" |> print_json;;
 
 
 
