@@ -37,7 +37,7 @@ let (<$>) (f: 'a -> 'b) (p: 'a parser): 'b parser =
         | None -> None
         | Some((x, rest)) -> Some((f x, rest));;
 
-let orO (o1: 'a option) (o2: 'b option) =
+let or_o (o1: 'a option) (o2: 'b option) =
     match (o1, o2) with
     | (None, None) -> None
     | (Some(v1), None) -> Some(v1)
@@ -46,40 +46,44 @@ let orO (o1: 'a option) (o2: 'b option) =
 
 let (<|>) (p1: 'a parser) (p2: 'b parser) =
     fun inp ->
-        orO (p1 inp) (p2 inp);;
+        or_o (p1 inp) (p2 inp);;
 
 let item: char parser =
     fun inp ->
         match (inp |> string_to_chars) with
         | [] -> Option.none
-        | (x :: xs) ->
-                let rest = xs |> chars_to_string in
-                Option.some (x, rest);;
+        | x :: xs ->
+                let rest = xs |> chars_to_string in Option.some (x, rest);;
 
-let charParser (c: char): char parser =
+let sat (p: char -> bool): char parser =
     item >>= fun x ->
-        if x == c then return x else zero;;
+        if p x then return x else zero;;
 
-let stringParser (s: string): string parser =
-    let rec stringParser' (s: string) (acc: char list) =
-        match (s |> string_to_chars) with
-        | [] -> return (acc |> List.rev |> chars_to_string)
-        | (x :: xs) -> charParser x >>= fun y ->
-                            stringParser' (xs |> chars_to_string) (y::acc)
-    in stringParser' s [];;
+let char_parser (c: char): char parser =
+    sat (fun x -> x = c);;
 
-let nullParser: json_value parser =
-    (fun _ -> Json_null) <$> stringParser "null";;
+let rec char_list_parser (s: string): char list parser =
+    match (s |> string_to_chars) with
+    | [] -> return []
+    | x :: xs -> char_parser x >>= fun _ ->
+                 char_list_parser (xs |> chars_to_string) >>= fun _ ->
+                 return (x :: xs);;
 
-let boolParser: json_value parser =
+let string_parser (s: string): string parser =
+    chars_to_string <$> (char_list_parser s);;
+
+let null_parser: json_value parser =
+    (fun _ -> Json_null) <$> string_parser "null";;
+
+let bool_parser: json_value parser =
     let f = function
         | "true" -> Json_bool(true)
         | "false" -> Json_bool(false)
         | _ -> failwith "Exception occur"
     in
-    f <$> (stringParser "true" <|> stringParser "false");;
+    f <$> (string_parser "true" <|> string_parser "false");;
 
-let jsonParser: json_value parser = nullParser <|> boolParser;;
+let json_parser: json_value parser = null_parser <|> bool_parser;;
 
 let print_json (v: (json_value * string) option): unit =
     match v with
@@ -90,7 +94,7 @@ let print_json (v: (json_value * string) option): unit =
         | _ -> failwith "not implemented yet";;
 
 let () =
-    jsonParser "true" |> print_json;;
+    json_parser "true" |> print_json;;
 
 
 
