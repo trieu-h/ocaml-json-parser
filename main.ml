@@ -48,6 +48,16 @@ let (<|>) (p1: 'a parser) (p2: 'b parser) =
     fun inp ->
         or_o (p1 inp) (p2 inp);;
 
+let (>>) (p1: 'a parser) (p2: 'b parser) =
+    p1 >>= fun x ->
+        p2 >>= fun y ->
+            return y;;
+
+let (<<) (p1: 'a parser) (p2: 'b parser) =
+    p1 >>= fun x ->
+        p2 >>= fun y ->
+            return x;;
+
 let item: char parser =
     fun inp ->
         match (inp |> string_to_chars) with
@@ -101,28 +111,38 @@ let json_bool: json_value parser =
     in
     f <$> (string_parser "true" <|> string_parser "false");;
 
+let string_literal = parse_while (fun x -> x <> '"');;
+
+let json_string: json_value parser =
+    (fun s -> Json_string(s)) <$> (char_parser '"' >> string_literal << char_parser '"');;
+
 let json_parser: json_value parser =
-    json_null <|> json_bool <|> json_number;;
+    json_null <|> json_bool <|> json_number <|> json_string;;
 
 let print_json (v: (json_value * string) option): unit =
     match v with
     | None -> print_endline "None"
     | Some(v) -> match v with
-        | (Json_null, str) -> Printf.printf "(%s, [\"%s\"])\n" "Json_null" str
-        | (Json_bool(b), str) -> Printf.printf "(Json_bool(%s), [\"%s\"])\n" (b |> Bool.to_string) str
-        | (Json_number(n), str) -> Printf.printf "(Json_number(%s), [\"%s\"])\n" (n |> Int.to_string) str
+        | (Json_null, rest) -> Printf.printf "(%s, [\"%s\"])\n" "Json_null" rest
+        | (Json_bool(b), rest) -> Printf.printf "(Json_bool(%s), [\"%s\"])\n" (b |> Bool.to_string) rest
+        | (Json_number(n), rest) -> Printf.printf "(Json_number(%s), [\"%s\"])\n" (n |> Int.to_string) rest
+        | (Json_string(s), rest) -> Printf.printf "(Json_string(%s), [\"%s\"])\n" s rest
         | _ -> failwith "not implemented yet";;
 
 let () =
     json_parser "123abc" |> print_json;;
 
 let () =
-    json_parser "true" |> print_json;;
+    json_parser "falsetrueabc" |> print_json;;
 
 let () =
-    json_parser "false" |> print_json;;
+    json_parser "nullabc" |> print_json;;
 
+let () =
+    json_parser "" |> print_json;;
 
+let () =
+    json_parser "\"abc\"" |> print_json;;
 
 
 
